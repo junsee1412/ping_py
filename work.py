@@ -1,6 +1,10 @@
+import os
+import zlib
+import time
+import errno
 import socket
 import struct
-import time
+import platform
 import threading
 
 # dest_addr = "vnpt.com.vn"
@@ -8,13 +12,129 @@ import threading
 ip = ""
 domain = ""
 
-def send_packet():
-    return float(time.time_ns() / 100000)
+IP_HEADER_FORMAT = "!BBHHHBBHII"
+ICMP_HEADER_FORMAT = "!BBHHH"
+ICMP_DEFAULT_CODE = 0
+ICMP_TIME_FORMAT = "!d"
+ECHO_REQUEST = 8
+ECHO_REPLY = 0
+TIME_EXCEEDED = 11
+TTL_EXPIRED = 0
+DESTINATION_UNREACHABLE = 3
+DESTINATION_HOST_UNREACHABLE = 1
 
-def receive_packet():
-    return float(time.time_ns() / 100000)
 
-def ping(domain_ip, **kwargs):
+
+
+def checksum(source: bytes) -> int:
+    BITS = 16 
+    carry = 1 << BITS 
+    result = sum(source[::2]) + (sum(source[1::2]) << (BITS // 2)) 
+    while result >= carry: 
+        result = sum(divmod(result, carry)) 
+    return ~result & ((1 << BITS) - 1)
+
+def read_icmp_header(raw: bytes) -> dict:
+    icmp_header_keys = ('type', 'code', 'checksum', 'id', 'seq')
+    return dict(zip(icmp_header_keys, struct.unpack(ICMP_HEADER_FORMAT, raw)))
+
+def read_ip_header(raw: bytes) -> dict:
+    def stringify_ip(ip: int) -> str:
+        return ".".join(str(ip >> offset & 0xff) for offset in (24, 16, 8, 0)) 
+
+    ip_header_keys = ('version', 'tos', 'len', 'id', 'flags', 'ttl', 'protocol', 'checksum', 'src_addr', 'dest_addr')
+    ip_header = dict(zip(ip_header_keys, struct.unpack(IP_HEADER_FORMAT, raw)))
+    ip_header['src_addr'] = stringify_ip(ip_header['src_addr'])
+    ip_header['dest_addr'] = stringify_ip(ip_header['dest_addr'])
+    return ip_header
+
+
+def send_packet(sock: socket, dest_addr: str, icmp_id: int, seq: int, size: int):
+    pseudo_checksum = 0 
+    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, 0, pseudo_checksum, icmp_id, seq)
+
+    padding = (size - struct.calcsize(ICMP_TIME_FORMAT)) * "Q"
+    icmp_payload = struct.pack(ICMP_TIME_FORMAT, time.time()) + padding.encode()
+    real_checksum = checksum(icmp_header + icmp_payload)
+    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, ICMP_DEFAULT_CODE, socket.htons(real_checksum), icmp_id, seq)
+    packet = icmp_header + icmp_payload
+    sock.sendto(packet, (dest_addr, 0))
+
+def receive_packet(sock: socket, icmp_id: int, seq: int, timeout: int):
+    has_ip_header = (os.name != 'posix') or (platform.system() == 'Darwin') or (sock.type == socket.SOCK_RAW)
+    if has_ip_header:
+        ip_header_slice = slice(0, struct.calcsize(IP_HEADER_FORMAT))
+        icmp_header_slice = slice(ip_header_slice.stop, ip_header_slice.stop + struct.calcsize(ICMP_HEADER_FORMAT))
+    else:
+        icmp_header_slice = slice(0, struct.calcsize(ICMP_HEADER_FORMAT))
+    
+
+    while True:
+        recv_data, addr = sock.recvfrom(1500)
+     
+        if has_ip_header:
+            ip_header_raw = recv_data[ip_header_slice]
+            ip_header = read_ip_header(ip_header_raw)
+        icmp_header_raw, icmp_payload_raw = recv_data[icmp_header_slice], recv_data[icmp_header_slice.stop:]
+        icmp_header = read_icmp_header(icmp_header_raw)
+
+        if not has_ip_header:
+            icmp_id = sock.getsockname()[1] 
+       
+        if icmp_header['id'] and icmp_header['id'] != icmp_id: 
+            continue
+      
+        if icmp_header['id'] and icmp_header['seq'] == seq:
+            if icmp_header['type'] == ECHO_REQUEST: 
+                continue
+            if icmp_header['type'] == ECHO_REPLY:
+                time_sent = struct.unpack(ICMP_TIME_FORMAT, icmp_payload_raw[0:struct.calcsize(ICMP_TIME_FORMAT)])[0]
+                time_recv = time.time()
+                return time_recv - time_sent 
+
+
+def ping(domain, ip, count, ttl, size, timeout):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+    except PermissionError as err:
+        if err.errno == errno.EPERM: 
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_ICMP)
+        else:
+            raise err
+    with sock:
+        if ttl:
+            try: 
+                if sock.getsockopt(socket.IPPROTO_IP, socket.IP_TTL):
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_TTL, ttl)
+            except OSError as err:
+                print(err)
+            try:
+                if sock.getsockopt(socket.SOL_IP, socket.IP_TTL):
+                    sock.setsockopt(socket.SOL_IP, socket.IP_TTL, ttl)
+            except OSError as err:
+                print(err)
+        
+        thread_id = threading.get_native_id() if hasattr(threading, 'get_native_id') else threading.currentThread().ident 
+        process_id = os.getpid()
+        icmp_id = zlib.crc32("{}{}".format(process_id, thread_id).encode()) & 0xffff
+        
+        icmp_seq = 1
+
+        while count>=icmp_seq:
+            try:
+                send_packet(sock=sock, dest_addr=ip, icmp_id=icmp_id, seq=icmp_seq, size=size)
+                delay = receive_packet(sock=sock, icmp_id=icmp_id, seq=icmp_seq, timeout=timeout) * 1000
+            except:
+                pass
+
+            ping_body_str = "{} bytes from {} ({}): icmp_seq={} ttl={} time={:.1f} ms".format(
+                size, domain, ip, icmp_seq, ttl, delay)
+            print(ping_body_str)
+
+            icmp_seq+=1
+            time.sleep(1)
+
+def startup(domain_ip, **kwargs):
     try:
         ip = socket.gethostbyname(domain_ip)
         domain = socket.gethostbyaddr(domain_ip)[0]
@@ -27,26 +147,6 @@ def ping(domain_ip, **kwargs):
     ttl = kwargs.get("ttl")
     timeout = kwargs.get("timeout")
 
-    icmp_seq = 1
-
-    ping_start_str = "PING {domain_ip} ({domain} ({ip})) {size} data bytes".format(
-        domain_ip = domain_ip, domain = domain, ip = ip, size = size)
+    ping_start_str = "PING {} ({} ({})) {} data bytes".format(domain_ip, domain, ip, size)
     print(ping_start_str)
-
-    while count>=icmp_seq:
-        # send packet to target host
-        send = float(time.time_ns() / 100000)
-        time.sleep(0.0054)
-
-        # receive packet from target host
-        receive = receive_packet()
-        # time_delay = receive - send
-        time_delay = receive - send
-
-
-        ping_body_str = "{size} bytes from {domain} ({ip}): icmp_seq={icmp_seq} ttl={ttl} time={time:.1f} ms".format(
-            size = size, domain = domain, ip = ip, icmp_seq = icmp_seq, ttl = ttl, time = time_delay)
-        print(ping_body_str)
-
-        icmp_seq+=1
-        time.sleep(1)
+    ping(domain, ip, count, ttl, size, timeout)

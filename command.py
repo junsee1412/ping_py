@@ -14,6 +14,6 @@ def main(assigned_args: list = None):
 
     args = parser.parse_args(assigned_args)
     # work.ping(args.dest_addr)
-    work.ping(args.dest_addr, count=args.count, ttl=args.ttl, timeout=args.timeout, size=args.size)
+    work.startup(args.dest_addr, count=args.count, ttl=args.ttl, timeout=args.timeout, size=args.size)
 
 main()
