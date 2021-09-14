@@ -1,0 +1,109 @@
+#!/usr/bin/env python
+
+import time
+from PyQt5 import QtCore
+from PyQt5.QtWidgets import (
+    QApplication, QLabel, QHBoxLayout, 
+    QPushButton, QTextEdit, QVBoxLayout, QWidget, 
+    QLineEdit, QSpinBox, QDoubleSpinBox,
+    QPlainTextEdit)
+import work
+import os
+import sys
+
+class Window(QWidget):
+
+    def __init__(self):
+        super().__init__()
+        p_layout = QVBoxLayout()
+
+        c_layout_1 = QHBoxLayout()
+        c_layout_2 = QHBoxLayout()
+        c_layout_2_0 = QVBoxLayout()
+        c_layout_2_1 = QVBoxLayout()
+        c_layout_2_2 = QVBoxLayout()
+        c_layout_2_3 = QVBoxLayout()
+
+        l_domain = QLabel("Domain: ")
+        self.domain = QLineEdit()
+        self.domain.setText("google.com")
+        self.ping = QPushButton("Ping")
+        self.ping.clicked.connect(self.run)
+
+        l_cout = QLabel("cout:")
+        self.count = QSpinBox()
+        self.count.setRange(1, 9999)
+        self.count.setValue(5)
+
+        l_ttl = QLabel("ttl:")
+        self.ttl = QSpinBox()
+        self.ttl.setRange(1, 9999)
+        self.ttl.setValue(64)
+
+        l_time = QLabel("timeout:")
+        self.time = QDoubleSpinBox()
+        self.time.setRange(0, 9999)
+        self.time.setValue(4)
+
+        l_size = QLabel("size:")
+        self.sizes = QSpinBox()
+        self.sizes.setRange(1, 1024)
+        self.sizes.setValue(56)
+        
+        self.status = QTextEdit()
+        self.status.setReadOnly(True)
+        self.process = QtCore.QProcess(self)
+        self.process.readyRead.connect(self.dataReady)
+        self.process.started.connect(lambda: self.ping.setEnabled(False))
+        self.process.finished.connect(lambda: self.ping.setEnabled(True))
+
+        c_layout_1.addWidget(l_domain, 0)
+        c_layout_1.addWidget(self.domain, 5)
+        c_layout_1.addWidget(self.ping, 0)
+        
+        c_layout_2_0.addWidget(l_cout)
+        c_layout_2_0.addWidget(self.count)
+
+        c_layout_2_1.addWidget(l_ttl)
+        c_layout_2_1.addWidget(self.ttl)
+
+        c_layout_2_2.addWidget(l_time)
+        c_layout_2_2.addWidget(self.time)
+
+        c_layout_2_3.addWidget(l_size)
+        c_layout_2_3.addWidget(self.sizes)
+
+        c_layout_2.addLayout(c_layout_2_0)
+        c_layout_2.addLayout(c_layout_2_1)
+        c_layout_2.addLayout(c_layout_2_2)
+        c_layout_2.addLayout(c_layout_2_3)
+
+        p_layout.addLayout(c_layout_1)
+        p_layout.addLayout(c_layout_2)
+        p_layout.addWidget(self.status)
+
+        self.setLayout(p_layout)
+
+    def dataReady(self):
+        ls_text = str(self.process.readAll()).split("'")
+        ls_text = ls_text[1].split("\\n")
+        for text in ls_text:
+            self.status.append(text)
+
+    def run(self):
+        domain_ip = self.domain.text()
+        count = int(self.count.value())
+        ttl = self.ttl.value()
+        timeout = self.time.value()
+        size = self.sizes.value()
+        line = "./command {} -c {} -t {} -w {} -s {}".format(domain_ip, count, ttl, timeout, size, 0)
+        self.process.start(line)
+
+        
+    
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    win = Window()
+    win.setGeometry(200, 200, 630, 480)
+    win.show()
+    sys.exit(app.exec_())

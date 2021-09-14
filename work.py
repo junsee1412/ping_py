@@ -1,11 +1,13 @@
 import os
-import zlib
 import time
+import zlib
 import errno
 import socket
 import struct
+import random
 import platform
 import threading
+
 
 # dest_addr = "vnpt.com.vn"
 # dest_addr = "google.com"
@@ -71,10 +73,8 @@ def receive_packet(sock: socket, icmp_id: int, seq: int, timeout: int):
 
     while True:
         recv_data, addr = sock.recvfrom(1500)
-     
-        if has_ip_header:
-            ip_header_raw = recv_data[ip_header_slice]
-            ip_header = read_ip_header(ip_header_raw)
+        # print(f"{recv_data},{addr}")
+        
         icmp_header_raw, icmp_payload_raw = recv_data[icmp_header_slice], recv_data[icmp_header_slice.stop:]
         icmp_header = read_icmp_header(icmp_header_raw)
 
@@ -93,7 +93,7 @@ def receive_packet(sock: socket, icmp_id: int, seq: int, timeout: int):
                 return time_recv - time_sent 
 
 
-def ping(domain, ip, count, ttl, size, timeout):
+def ping(ip, domain, count, ttl, size, timeout, tstep):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
     except PermissionError as err:
@@ -114,39 +114,37 @@ def ping(domain, ip, count, ttl, size, timeout):
             except OSError as err:
                 print(err)
         
-        thread_id = threading.get_native_id() if hasattr(threading, 'get_native_id') else threading.currentThread().ident 
+        thread_id = threading.get_native_id() if hasattr(threading, 'get_native_id') else threading.currentThread().ident
         process_id = os.getpid()
-        icmp_id = zlib.crc32("{}{}".format(process_id, thread_id).encode()) & 0xffff
+        icmp_id = zlib.crc32("{}{}".format(process_id, thread_id).encode()) & 0xffff 
         
-        icmp_seq = 1
 
+        icmp_seq = 1
         while count>=icmp_seq:
             try:
                 send_packet(sock=sock, dest_addr=ip, icmp_id=icmp_id, seq=icmp_seq, size=size)
                 delay = receive_packet(sock=sock, icmp_id=icmp_id, seq=icmp_seq, timeout=timeout) * 1000
             except:
-                pass
-
+                print(err)
+                return
             ping_body_str = "{} bytes from {} ({}): icmp_seq={} ttl={} time={:.1f} ms".format(
                 size, domain, ip, icmp_seq, ttl, delay)
             print(ping_body_str)
 
             icmp_seq+=1
-            time.sleep(1)
+            time.sleep(tstep)
 
-def startup(domain_ip, **kwargs):
+def startup(domain_ip, count, ttl, timeout, size, tstep):
     try:
         ip = socket.gethostbyname(domain_ip)
         domain = socket.gethostbyaddr(domain_ip)[0]
     except socket.gaierror as err:
         print(err)
         return 0
-
-    size = kwargs.get("size")
-    count = kwargs.get("count")
-    ttl = kwargs.get("ttl")
-    timeout = kwargs.get("timeout")
+    # domain_ip = returnIP(domain_ip)
+    # ip = domain_ip[0]
+    # domain = domain_ip[1]
 
     ping_start_str = "PING {} ({} ({})) {} data bytes".format(domain_ip, domain, ip, size)
     print(ping_start_str)
-    ping(domain, ip, count, ttl, size, timeout)
+    ping(ip, domain, count, ttl, size, timeout, tstep)
