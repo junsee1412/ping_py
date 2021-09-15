@@ -15,15 +15,9 @@ ECHO_REPLY = 0
 ECHO_REQUEST = 8
 
 ICMP_HEADER_FORMAT = "!BBHHH"
-ICMP_DEFAULT_CODE = 0
 ICMP_TIME_FORMAT = "!d"
 
 IP_HEADER_FORMAT = "!BBHHHBBHII"
-TIME_EXCEEDED = 11
-TTL_EXPIRED = 0
-
-DESTINATION_UNREACHABLE = 3
-DESTINATION_HOST_UNREACHABLE = 1
 
 def checksum(source: bytes) -> int:
     BITS = 16 
@@ -50,12 +44,12 @@ def read_ip_header(raw: bytes) -> dict:
 
 def send_packet(sock: socket, dest_addr: str, icmp_id: int, seq: int, size: int):
     pseudo_checksum = 0 
-    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, ICMP_DEFAULT_CODE, pseudo_checksum, icmp_id, seq)
+    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, 0, pseudo_checksum, icmp_id, seq)
 
     padding = (size - struct.calcsize(ICMP_TIME_FORMAT)) * "Q"
     icmp_payload = struct.pack(ICMP_TIME_FORMAT, time.time()) + padding.encode()
     real_checksum = checksum(icmp_header + icmp_payload)
-    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, ICMP_DEFAULT_CODE, socket.htons(real_checksum), icmp_id, seq)
+    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, 0, socket.htons(real_checksum), icmp_id, seq)
     packet = icmp_header + icmp_payload
     sock.sendto(packet, (dest_addr, 0))
 
@@ -70,8 +64,8 @@ def receive_packet(sock: socket, icmp_id: int, seq: int, timeout: int):
 
     while True:
         recv_data, addr = sock.recvfrom(1500)
-        # print(f"{recv_data},{addr}")
-        
+        time_recv = time.time()
+
         icmp_header_raw, icmp_payload_raw = recv_data[icmp_header_slice], recv_data[icmp_header_slice.stop:]
         icmp_header = read_icmp_header(icmp_header_raw)
 
@@ -86,7 +80,6 @@ def receive_packet(sock: socket, icmp_id: int, seq: int, timeout: int):
                 continue
             if icmp_header['type'] == ECHO_REPLY:
                 time_sent = struct.unpack(ICMP_TIME_FORMAT, icmp_payload_raw[0:struct.calcsize(ICMP_TIME_FORMAT)])[0]
-                time_recv = time.time()
                 return time_recv - time_sent 
 
 
@@ -133,10 +126,13 @@ def ping(ip, domain, count, ttl, size, timeout, tstep):
 def startup(domain_ip, count, ttl, timeout, size, tstep):
     try:
         ip = socket.gethostbyname(domain_ip)
-        domain = socket.gethostbyaddr(domain_ip)[0]
     except socket.gaierror as err:
         print(err)
         return 0
+    try:
+        domain = socket.gethostbyaddr(domain_ip)[0]
+    except:
+        domain = ""
 
     ping_start_str = "PING {} ({} ({})) {} data bytes".format(domain_ip, domain, ip, size)
     print(ping_start_str)

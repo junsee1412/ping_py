@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 
-import time
 from PyQt5 import QtCore
 from PyQt5.QtWidgets import (
     QApplication, QLabel, QHBoxLayout, 
-    QPushButton, QTextEdit, QVBoxLayout, QWidget, 
+    QPushButton, QVBoxLayout, QWidget, 
     QLineEdit, QSpinBox, QDoubleSpinBox,
     QPlainTextEdit)
-import work
-import os
 import sys
 
 class Window(QWidget):
@@ -26,7 +23,7 @@ class Window(QWidget):
 
         l_domain = QLabel("Domain: ")
         self.domain = QLineEdit()
-        self.domain.setText("google.com")
+        self.domain.setText("192.168.1.6")
         self.ping = QPushButton("Ping")
         self.ping.clicked.connect(self.run)
 
@@ -50,7 +47,7 @@ class Window(QWidget):
         self.sizes.setRange(1, 1024)
         self.sizes.setValue(56)
         
-        self.status = QTextEdit()
+        self.status = QPlainTextEdit()
         self.status.setReadOnly(True)
         self.process = QtCore.QProcess(self)
         self.process.readyRead.connect(self.dataReady)
@@ -88,7 +85,7 @@ class Window(QWidget):
         ls_text = str(self.process.readAll()).split("'")
         ls_text = ls_text[1].split("\\n")
         for text in ls_text:
-            self.status.append(text)
+            self.status.appendPlainText(text)
 
     def run(self):
         domain_ip = self.domain.text()
