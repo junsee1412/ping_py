@@ -4,29 +4,26 @@ import zlib
 import errno
 import socket
 import struct
-import random
 import platform
 import threading
 
-
-# dest_addr = "vnpt.com.vn"
-# dest_addr = "google.com"
 ip = ""
 domain = ""
 
-IP_HEADER_FORMAT = "!BBHHHBBHII"
+#ICMP echo 
+ECHO_REPLY = 0
+ECHO_REQUEST = 8
+
 ICMP_HEADER_FORMAT = "!BBHHH"
 ICMP_DEFAULT_CODE = 0
 ICMP_TIME_FORMAT = "!d"
-ECHO_REQUEST = 8
-ECHO_REPLY = 0
+
+IP_HEADER_FORMAT = "!BBHHHBBHII"
 TIME_EXCEEDED = 11
 TTL_EXPIRED = 0
+
 DESTINATION_UNREACHABLE = 3
 DESTINATION_HOST_UNREACHABLE = 1
-
-
-
 
 def checksum(source: bytes) -> int:
     BITS = 16 
@@ -53,7 +50,7 @@ def read_ip_header(raw: bytes) -> dict:
 
 def send_packet(sock: socket, dest_addr: str, icmp_id: int, seq: int, size: int):
     pseudo_checksum = 0 
-    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, 0, pseudo_checksum, icmp_id, seq)
+    icmp_header = struct.pack(ICMP_HEADER_FORMAT, ECHO_REQUEST, ICMP_DEFAULT_CODE, pseudo_checksum, icmp_id, seq)
 
     padding = (size - struct.calcsize(ICMP_TIME_FORMAT)) * "Q"
     icmp_payload = struct.pack(ICMP_TIME_FORMAT, time.time()) + padding.encode()
@@ -118,7 +115,6 @@ def ping(ip, domain, count, ttl, size, timeout, tstep):
         process_id = os.getpid()
         icmp_id = zlib.crc32("{}{}".format(process_id, thread_id).encode()) & 0xffff 
         
-
         icmp_seq = 1
         while count>=icmp_seq:
             try:
@@ -141,9 +137,6 @@ def startup(domain_ip, count, ttl, timeout, size, tstep):
     except socket.gaierror as err:
         print(err)
         return 0
-    # domain_ip = returnIP(domain_ip)
-    # ip = domain_ip[0]
-    # domain = domain_ip[1]
 
     ping_start_str = "PING {} ({} ({})) {} data bytes".format(domain_ip, domain, ip, size)
     print(ping_start_str)
