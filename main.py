@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import QApplication, QDialog, QMainWindow, QWidget
 from gui.main_gui import Ui_MainWindow
 from work.ping import ping
 
-
 class Worker(QObject):
 
     sig_step = pyqtSignal(str, object)
@@ -30,7 +29,7 @@ class Worker(QObject):
 
     @pyqtSlot()
     def work(self):
-        self.sig_msg.emit(f'PING google.com {self.addr} data bytes', QColor(self.r, self.g, self.b))
+        self.sig_msg.emit(f'PING {self.addr} data bytes', QColor(self.r, self.g, self.b))
 
         for step in range(1, self.count+1):
             self.per[0] += 1
@@ -63,7 +62,7 @@ class Worker(QObject):
         self.__abort = True
     
     def data(self):
-        per = self.per[1] *100 / self.per[0]
+        per = 100 - (self.per[1] *100 / self.per[0])
         min = self.avr_time[0]
         max = self.avr_time[-1]
         avg = sum(self.avr_time) / self.per[0]
@@ -71,7 +70,7 @@ class Worker(QObject):
         return dat
 
 
-class MyWidget(QWidget):
+class PingGUI(QWidget):
     sig_abort_workers = pyqtSignal()
 
     def __init__(self):
@@ -121,18 +120,17 @@ class MyWidget(QWidget):
         self.item = self.mwg.proc_list.currentItem()
         self.host_name = self.item.text()
         self.mwg.btn_remove.setEnabled(True)
-        print(self.host_name)
+        self.mwg.line_ip.setText(self.host_name)
+        host_attr = self.__hosts[self.host_name]
+        self.setValue_to_gui(self.host_name, host_attr[0], host_attr[1], host_attr[3], host_attr[2])
+        print(f'{self.host_name}: {self.__hosts[self.host_name]}')
 
     def new_host(self):
-        self.addr = self.mwg.line_ip.text().strip()
-        self.count = int(self.mwg.spin_count.text())
-        self.ttl = int(self.mwg.spin_ttl.text())
-        self.size = int(self.mwg.spin_size.text())
-        self.timeout = float(self.mwg.spin_timeout.text())
-        if self.addr != '':
-            self.__hosts.update({self.addr: [self.count, self.ttl, self.size, self.timeout],})
+        new_host = self.getValue_from_gui()
+        if new_host[0] != '':
+            self.__hosts.update({new_host[0]: [new_host[1], new_host[2], new_host[3], new_host[4]],})
             self.update_hosts()
-        self.mwg.line_ip.clear()
+        self.setValue_to_gui('', 5, 64, 4, 56)
 
     def update_hosts(self):
         self.hosts = list(self.__hosts.keys())
@@ -167,6 +165,20 @@ class MyWidget(QWidget):
             thread.started.connect(worker.work)
             thread.start()
 
+    def setValue_to_gui(self, addr:str, count: int, ttl: int, timeout: float, size: int):
+        self.mwg.line_ip.setText(addr)
+        self.mwg.spin_count.setValue(count)
+        self.mwg.spin_ttl.setValue(ttl)
+        self.mwg.spin_size.setValue(size)
+        self.mwg.spin_timeout.setValue(timeout)
+
+    def getValue_from_gui(self):
+        host = self.mwg.line_ip.text().strip()
+        count = int(self.mwg.spin_count.text())
+        ttl = int(self.mwg.spin_ttl.text())
+        size = int(self.mwg.spin_size.text())
+        timeout = float(self.mwg.spin_timeout.text())
+        return [host, count, ttl, size, timeout]
 
     @pyqtSlot(str, object)
     def msg_workers(self, msg: str, color):
@@ -204,7 +216,7 @@ class MyWidget(QWidget):
 if __name__ == "__main__":
     app = QApplication([])
 
-    form = MyWidget()
+    form = PingGUI()
     form.show()
 
     sys.exit(app.exec_())
