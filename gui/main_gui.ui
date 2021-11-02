@@ -86,7 +86,7 @@
     <item row="2" column="2">
      <widget class="QDoubleSpinBox" name="spin_timeout">
       <property name="value">
-       <double>4.000000000000000</double>
+       <double>2.000000000000000</double>
       </property>
      </widget>
     </item>
@@ -169,7 +169,7 @@
      <x>0</x>
      <y>0</y>
      <width>724</width>
-     <height>20</height>
+     <height>26</height>
     </rect>
    </property>
   </widget>

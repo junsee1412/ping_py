@@ -62,12 +62,15 @@ class Worker(QObject):
         self.__abort = True
     
     def data(self):
-        per = 100 - (self.per[1] *100 / self.per[0])
-        min = self.avr_time[0]
-        max = self.avr_time[-1]
-        avg = sum(self.avr_time) / self.per[0]
-        dat = f'PING {self.addr} {self.per[0]} packets transmitted, {self.per[1]} received, {per:.0f}% packet loss \nmin/avg/max {min:.3f}/{avg:.3f}/{max:.3f}'
-        return dat
+        try:
+            per = 100 - (self.per[1] *100 / self.per[0])
+            min = self.avr_time[0]
+            max = self.avr_time[-1]
+            avg = sum(self.avr_time) / self.per[0]
+            dat = f'PING {self.addr} {self.per[0]} packets transmitted, {self.per[1]} received, {per:.0f}% packet loss \nmin/avg/max {min:.3f}/{avg:.3f}/{max:.3f}'
+            return dat
+        except:
+            return 'IP not found'
 
 
 class PingGUI(QWidget):
@@ -130,7 +133,7 @@ class PingGUI(QWidget):
         if new_host[0] != '':
             self.__hosts.update({new_host[0]: [new_host[1], new_host[2], new_host[3], new_host[4]],})
             self.update_hosts()
-        self.setValue_to_gui('', 5, 64, 4, 56)
+        self.setValue_to_gui('', 5, 64, 2, 56)
 
     def update_hosts(self):
         self.hosts = list(self.__hosts.keys())
